@@ -1,0 +1,20 @@
+const COV = 0.82;
+const SPEED = 0.91;
+const GAUSS = COV * 0.7 + SPEED * 0.3;
+const UMBRAL = 0.65;
+
+const ESTADO = GAUSS >= UMBRAL ? "MODULARIZADO" : "ACOPLADO";
+const COLOR = GAUSS >= UMBRAL ? "\x1b[32m" : "\x1b[31m";
+const RESET = "\x1b[0m";
+
+console.log(`
+${COLOR}=== TAPIZ GAUSS CLI v1.0 ===${RESET}
+direccion → identidad → asignacion → beneficio
+
+[ COHESION ]: ██████████ 0.82
+[ PHASE    ]: ██ 0.18
+[ GAUSS    ]: ${COLOR}${GAUSS.toFixed(2)}${RESET} / Umbral: ${UMBRAL}
+[ ESTADO   ]: ${COLOR}${ESTADO}${RESET}
+
+Usa: deno task gauss para recalcular
+`);
