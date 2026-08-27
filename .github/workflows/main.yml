@@ -1,30 +1,57 @@
-      - name: Benchmarks
-        run: |
-          deno bench --json > bench.json || echo "[]" > bench.json
-        continue-on-error: true
-
-      - name: Calcular GAUSS RESONANCE
-        id: gauss
-        run: |
-          COV=$(grep -oP 'LF:\K\d+' cov.lcov | awk '{s+=$1} END{print s+0}')
-          TL=$(grep -oP 'LH:\K\d+' cov.lcov | awk '{s+=$1} END{print s+0}')
-
-          if [ "$COV" -eq 0 ]; then
-            COVERAGE=0
-          else
-            COVERAGE=$(echo "scale=2; ($COV-$TL)/$COV" | bc)
-          fi
-
-          if [ "$(jq length bench.json)" -eq 0 ]; then
-            SPEED=0
-          else
-            SPEED=$(jq '[.[].nanos] | add / length' bench.json)
-            SPEED=$(echo "scale=3; 1000000 / ($SPEED + 1)" | bc)
-          fi
-
-          GAUSS=$(echo "scale=2; $COVERAGE*0.7 + $SPEED*0.3" | bc)
-
-          echo "gauss=$GAUSS" >> $GITHUB_OUTPUT
-
-          echo "=== GAUSS TAPIZ REPORT ==="
-          echo "Coverage: $COVERAGE | Speed: $SPEED | GAUSS: $GAUSS | UMBRAL: $MIN_GAUSS"
+archivo
+ |
+ v
+bytes
+ |
+ v
+bits
+ |
+ +---- 0
+ |
+ +---- 1
+ |
+ v
+espacio binario
+ |
+ +---- total
+ +---- ceros
+ +---- unos
+ +---- delta
+ +---- densidad
+ +---- entropia
+ |
+ v
+bloques
+ |
+ +---- delta_0
+ +---- delta_1
+ +---- ...
+ |
+ v
+L
+ |
+ +---- delta / 2
+ +---- delta / 4
+ +---- delta / 8
+ +---- ...
+ |
+ v
+firma
+ |
+ v
+vector
+ |
+ v
+distancia
+ |
+ v
+angulo
+ |
+ v
+resonancia
+ |
+ v
+dinamica
+ |
+ v
+decision
