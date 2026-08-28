@@ -6,25 +6,118 @@
       - name: Calcular GAUSS RESONANCE
         id: gauss
         run: |
-          COV=$(grep -oP 'LF:\K\d+' cov.lcov | awk '{s+=$1} END{print s+0}')
-          TL=$(grep -oP 'LH:\K\d+' cov.lcov | awk '{s+=$1} END{print s+0}')
+          set -e
+
+          echo "=============================="
+          echo "      GAUSS RESONANCE TAPIZ"
+          echo "=============================="
+
+          # --------------------------------
+          # DATO
+          # --------------------------------
+
+          COV=$(grep -oP 'LF:\K\d+' cov.lcov |
+            awk '{s+=$1} END{print s+0}')
+
+          TL=$(grep -oP 'LH:\K\d+' cov.lcov |
+            awk '{s+=$1} END{print s+0}')
+
+          echo "[DATO]"
+          echo "COV=$COV"
+          echo "TL=$TL"
+
+          # --------------------------------
+          # DESCOMPOSICION
+          # --------------------------------
 
           if [ "$COV" -eq 0 ]; then
             COVERAGE=0
           else
-            COVERAGE=$(echo "scale=2; ($COV-$TL)/$COV" | bc)
+            COVERAGE=$(echo "scale=6; ($COV-$TL)/$COV" | bc -l)
           fi
 
-          if [ "$(jq length bench.json)" -eq 0 ]; then
+          if [ "$(jq 'length' bench.json)" -eq 0 ]; then
             SPEED=0
+            AVG_NANOS=0
           else
-            SPEED=$(jq '[.[].nanos] | add / length' bench.json)
-            SPEED=$(echo "scale=3; 1000000 / ($SPEED + 1)" | bc)
+            AVG_NANOS=$(jq '[.[].nanos] | add / length' bench.json)
+            SPEED=$(echo "scale=6; 1000000 / ($AVG_NANOS + 1)" | bc -l)
           fi
 
-          GAUSS=$(echo "scale=2; $COVERAGE*0.7 + $SPEED*0.3" | bc)
+          echo "[DESCOMPOSICION]"
+          echo "COVERAGE=$COVERAGE"
+          echo "AVG_NANOS=$AVG_NANOS"
+          echo "SPEED=$SPEED"
 
-          echo "gauss=$GAUSS" >> $GITHUB_OUTPUT
+          # --------------------------------
+          # FIRMA
+          # --------------------------------
 
-          echo "=== GAUSS TAPIZ REPORT ==="
-          echo "Coverage: $COVERAGE | Speed: $SPEED | GAUSS: $GAUSS | UMBRAL: $MIN_GAUSS"
+          FIRMA=$(printf '%s|%s|%s|%s' \
+            "$COV" \
+            "$TL" \
+            "$AVG_NANOS" \
+            "$COVERAGE")
+
+          HASH=$(printf '%s' "$FIRMA" | sha256sum | awk '{print $1}')
+
+          echo "[FIRMA]"
+          echo "RAW=$FIRMA"
+          echo "SHA256=$HASH"
+
+          # --------------------------------
+          # VECTOR
+          # --------------------------------
+
+          V_COVERAGE="$COVERAGE"
+          V_SPEED="$SPEED"
+
+          echo "[VECTOR]"
+          echo "V=[$V_COVERAGE,$V_SPEED]"
+
+          # --------------------------------
+          # RESONANCIA
+          # --------------------------------
+
+          GAUSS=$(echo "scale=6; \
+            $COVERAGE*0.7 + $SPEED*0.3" | bc -l)
+
+          # --------------------------------
+          # DECISION
+          # --------------------------------
+
+          if (( $(echo "$GAUSS >= $MIN_GAUSS" | bc -l) )); then
+            DECISION="PASS"
+          else
+            DECISION="FAIL"
+          fi
+
+          echo "[RESONANCIA]"
+          echo "GAUSS=$GAUSS"
+
+          echo "[DECISION]"
+          echo "UMBRAL=$MIN_GAUSS"
+          echo "DECISION=$DECISION"
+
+          # --------------------------------
+          # GITHUB OUTPUT
+          # --------------------------------
+
+          {
+            echo "gauss=$GAUSS"
+            echo "coverage=$COVERAGE"
+            echo "speed=$SPEED"
+            echo "avg_nanos=$AVG_NANOS"
+            echo "firma=$HASH"
+            echo "decision=$DECISION"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "=============================="
+          echo "GAUSS TAPIZ REPORT"
+          echo "Coverage : $COVERAGE"
+          echo "Speed    : $SPEED"
+          echo "GAUSS    : $GAUSS"
+          echo "UMBRAL   : $MIN_GAUSS"
+          echo "FIRMA    : $HASH"
+          echo "DECISION : $DECISION"
+          echo "=============================="
