@@ -2,14 +2,19 @@ name: Tapiz Orquestador Principal
 
 on:
   push:
-    branches: ["main", "principal"]
+    branches:
+      - main
+      - principal
+
   pull_request:
-    branches: ["main", "principal"]
+    branches:
+      - main
+      - principal
+
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   tapiz-ci:
@@ -26,24 +31,66 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Verificar estructura
+      - name: Inspeccionar repositorio
         run: |
-          python -m py_compile runner.py
+          echo "================================"
+          echo " UBICACION DEL REPOSITORIO"
+          echo "================================"
+          pwd
+
+          echo
+          echo "================================"
+          echo " ARCHIVOS"
+          echo "================================"
+          find . -maxdepth 5 -type f -print | sort
+
+      - name: Localizar Runner
+        id: localizar_runner
+        shell: bash
+        run: |
+          set -e
+
+          RUNNER="$(find . -type f -name 'runner.py' -print -quit)"
+
+          if [ -z "$RUNNER" ]; then
+            echo "ERROR: no se encontro runner.py en el repositorio."
+            exit 1
+          fi
+
+          echo "Runner encontrado:"
+          echo "$RUNNER"
+
+          echo "runner=$RUNNER" >> "$GITHUB_OUTPUT"
+
+      - name: Verificar Runner
+        run: |
+          python -m py_compile "${{ steps.localizar_runner.outputs.runner }}"
 
       - name: Ejecutar Runner
         run: |
-          python runner.py
+          python "${{ steps.localizar_runner.outputs.runner }}" > tapiz_output.txt
+
+          echo "================================"
+          echo " SALIDA DEL RUNNER"
+          echo "================================"
+          cat tapiz_output.txt
 
       - name: Validar salida estructural
         run: |
-          python runner.py > tapiz_output.txt
+          set -e
 
           grep -q "||K||" tapiz_output.txt
           grep -q "Lambda" tapiz_output.txt
           grep -q "Decision:" tapiz_output.txt
 
-          echo "=== VALIDACION TAPIZ ==="
-          cat tapiz_output.txt
+          echo
+          echo "================================"
+          echo " VALIDACION TAPIZ"
+          echo "================================"
+          echo "K: OK"
+          echo "Lambda: OK"
+          echo "Decision: OK"
+          echo "================================"
 
       - name: Resultado
         run: |
