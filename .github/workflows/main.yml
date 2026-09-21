@@ -1,123 +1,295 @@
-      - name: Benchmarks
-        run: |
-          deno bench --json > bench.json || echo "[]" > bench.json
-        continue-on-error: true
-
-      - name: Calcular GAUSS RESONANCE
+- name: Calcular GAUSS RESONANCE TAPIZ
         id: gauss
+        shell: bash
         run: |
-          set -e
+          set -Eeuo pipefail
 
-          echo "=============================="
-          echo "      GAUSS RESONANCE TAPIZ"
-          echo "=============================="
+          echo "========================================"
+          echo "       GAUSS RESONANCE TAPIZ v3"
+          echo "========================================"
 
-          # --------------------------------
+          # ============================================================
+          # CONFIGURACION
+          # ============================================================
+
+          MIN_GAUSS="${MIN_GAUSS:-0.65}"
+
+          # Referencia de rendimiento:
+          # 1000 ns = referencia de velocidad normalizada.
+          SPEED_REF_NS="${SPEED_REF_NS:-1000}"
+
+          # Pesos de la resonancia.
+          WEIGHT_COVERAGE="${WEIGHT_COVERAGE:-0.70}"
+          WEIGHT_SPEED="${WEIGHT_SPEED:-0.30}"
+
+          # ============================================================
+          # VALIDACION DE ENTRADAS
+          # ============================================================
+
+          test -f cov.lcov || {
+            echo "::error::No existe cov.lcov"
+            exit 1
+          }
+
+          test -f bench.json || {
+            echo "::error::No existe bench.json"
+            exit 1
+          }
+
+          jq empty bench.json >/dev/null 2>&1 || {
+            echo "::error::bench.json no contiene JSON valido"
+            exit 1
+          }
+
+          # ============================================================
           # DATO
-          # --------------------------------
+          # ============================================================
 
-          COV=$(grep -oP 'LF:\K\d+' cov.lcov |
-            awk '{s+=$1} END{print s+0}')
+          LF=$(awk -F: '/^LF:/ {s += $2} END {print s+0}' cov.lcov)
+          LH=$(awk -F: '/^LH:/ {s += $2} END {print s+0}' cov.lcov)
 
-          TL=$(grep -oP 'LH:\K\d+' cov.lcov |
-            awk '{s+=$1} END{print s+0}')
-
+          echo
           echo "[DATO]"
-          echo "COV=$COV"
-          echo "TL=$TL"
+          echo "LF=$LF"
+          echo "LH=$LH"
 
-          # --------------------------------
+          # ============================================================
           # DESCOMPOSICION
-          # --------------------------------
+          # ============================================================
 
-          if [ "$COV" -eq 0 ]; then
-            COVERAGE=0
+          if [ "$LF" -gt 0 ]; then
+            COVERAGE=$(awk \
+              -v hit="$LH" \
+              -v total="$LF" \
+              'BEGIN {
+                value = hit / total
+                if (value < 0) value = 0
+                if (value > 1) value = 1
+                printf "%.6f", value
+              }')
           else
-            COVERAGE=$(echo "scale=6; ($COV-$TL)/$COV" | bc -l)
+            COVERAGE="0.000000"
           fi
 
-          if [ "$(jq 'length' bench.json)" -eq 0 ]; then
-            SPEED=0
-            AVG_NANOS=0
+          BENCH_COUNT=$(jq 'if type == "array" then length else 0 end' bench.json)
+
+          if [ "$BENCH_COUNT" -gt 0 ]; then
+            AVG_NANOS=$(jq '
+              [ .[]
+                | select(.nanos? != null)
+                | .nanos
+                | tonumber
+              ]
+              | if length > 0
+                then add / length
+                else 0
+                end
+            ' bench.json)
+
+            SPEED=$(awk \
+              -v avg="$AVG_NANOS" \
+              -v ref="$SPEED_REF_NS" \
+              'BEGIN {
+                if (avg <= 0) {
+                  print "0.000000"
+                } else {
+                  value = ref / (avg + ref)
+                  if (value < 0) value = 0
+                  if (value > 1) value = 1
+                  printf "%.6f", value
+                }
+              }')
           else
-            AVG_NANOS=$(jq '[.[].nanos] | add / length' bench.json)
-            SPEED=$(echo "scale=6; 1000000 / ($AVG_NANOS + 1)" | bc -l)
+            AVG_NANOS="0"
+            SPEED="0.000000"
           fi
 
+          echo
           echo "[DESCOMPOSICION]"
           echo "COVERAGE=$COVERAGE"
           echo "AVG_NANOS=$AVG_NANOS"
+          echo "BENCH_COUNT=$BENCH_COUNT"
           echo "SPEED=$SPEED"
 
-          # --------------------------------
+          # ============================================================
           # FIRMA
-          # --------------------------------
+          # ============================================================
 
-          FIRMA=$(printf '%s|%s|%s|%s' \
-            "$COV" \
-            "$TL" \
+          FIRMA_RAW=$(printf '%s|%s|%s|%s|%s' \
+            "$LF" \
+            "$LH" \
             "$AVG_NANOS" \
-            "$COVERAGE")
+            "$COVERAGE" \
+            "$SPEED")
 
-          HASH=$(printf '%s' "$FIRMA" | sha256sum | awk '{print $1}')
+          FIRMA=$(printf '%s' "$FIRMA_RAW" |
+            sha256sum |
+            awk '{print $1}')
 
+          echo
           echo "[FIRMA]"
-          echo "RAW=$FIRMA"
-          echo "SHA256=$HASH"
+          echo "RAW=$FIRMA_RAW"
+          echo "SHA256=$FIRMA"
 
-          # --------------------------------
+          # ============================================================
           # VECTOR
-          # --------------------------------
+          # ============================================================
 
           V_COVERAGE="$COVERAGE"
           V_SPEED="$SPEED"
 
+          echo
           echo "[VECTOR]"
           echo "V=[$V_COVERAGE,$V_SPEED]"
 
-          # --------------------------------
+          # ============================================================
+          # DISTANCIA / ANGULO
+          # ============================================================
+
+          DISTANCE=$(awk \
+            -v x="$V_COVERAGE" \
+            -v y="$V_SPEED" \
+            'BEGIN {
+              printf "%.6f", sqrt(x*x + y*y)
+            }')
+
+          ANGLE_RAD=$(awk \
+            -v x="$V_COVERAGE" \
+            -v y="$V_SPEED" \
+            'BEGIN {
+              pi = atan2(0, -1)
+
+              if (x == 0 && y == 0) {
+                print "0.000000"
+              } else {
+                printf "%.6f", atan2(y, x)
+              }
+            }')
+
+          ANGLE_DEG=$(awk \
+            -v rad="$ANGLE_RAD" \
+            'BEGIN {
+              pi = atan2(0, -1)
+              printf "%.6f", rad * 180 / pi
+            }')
+
+          echo
+          echo "[GEOMETRIA]"
+          echo "DISTANCE=$DISTANCE"
+          echo "ANGLE_RAD=$ANGLE_RAD"
+          echo "ANGLE_DEG=$ANGLE_DEG"
+
+          # ============================================================
           # RESONANCIA
-          # --------------------------------
+          # ============================================================
 
-          GAUSS=$(echo "scale=6; \
-            $COVERAGE*0.7 + $SPEED*0.3" | bc -l)
+          GAUSS=$(awk \
+            -v coverage="$COVERAGE" \
+            -v speed="$SPEED" \
+            -v wc="$WEIGHT_COVERAGE" \
+            -v ws="$WEIGHT_SPEED" \
+            'BEGIN {
+              value = coverage * wc + speed * ws
 
-          # --------------------------------
-          # DECISION
-          # --------------------------------
+              if (value < 0) value = 0
+              if (value > 1) value = 1
 
-          if (( $(echo "$GAUSS >= $MIN_GAUSS" | bc -l) )); then
-            DECISION="PASS"
-          else
-            DECISION="FAIL"
-          fi
+              printf "%.6f", value
+            }')
 
+          echo
           echo "[RESONANCIA]"
           echo "GAUSS=$GAUSS"
+          echo "WEIGHT_COVERAGE=$WEIGHT_COVERAGE"
+          echo "WEIGHT_SPEED=$WEIGHT_SPEED"
 
+          # ============================================================
+          # DINAMICA
+          # ============================================================
+
+          DELTA_GAUSS="0.000000"
+
+          if [ -f .gauss_previous ]; then
+            PREVIOUS_GAUSS=$(cat .gauss_previous)
+
+            DELTA_GAUSS=$(awk \
+              -v current="$GAUSS" \
+              -v previous="$PREVIOUS_GAUSS" \
+              'BEGIN {
+                printf "%.6f", current - previous
+              }')
+          fi
+
+          printf '%s\n' "$GAUSS" > .gauss_previous
+
+          echo
+          echo "[DINAMICA]"
+          echo "PREVIOUS_GAUSS=${PREVIOUS_GAUSS:-N/A}"
+          echo "DELTA_GAUSS=$DELTA_GAUSS"
+
+          # ============================================================
+          # DECISION
+          # ============================================================
+
+          DECISION=$(awk \
+            -v gauss="$GAUSS" \
+            -v threshold="$MIN_GAUSS" \
+            'BEGIN {
+              if (gauss >= threshold)
+                print "PASS"
+              else
+                print "FAIL"
+            }')
+
+          echo
           echo "[DECISION]"
           echo "UMBRAL=$MIN_GAUSS"
           echo "DECISION=$DECISION"
 
-          # --------------------------------
+          # ============================================================
           # GITHUB OUTPUT
-          # --------------------------------
+          # ============================================================
 
           {
             echo "gauss=$GAUSS"
             echo "coverage=$COVERAGE"
             echo "speed=$SPEED"
             echo "avg_nanos=$AVG_NANOS"
-            echo "firma=$HASH"
+            echo "bench_count=$BENCH_COUNT"
+            echo "firma=$FIRMA"
+            echo "firma_raw=$FIRMA_RAW"
+            echo "distance=$DISTANCE"
+            echo "angle_rad=$ANGLE_RAD"
+            echo "angle_deg=$ANGLE_DEG"
+            echo "delta_gauss=$DELTA_GAUSS"
             echo "decision=$DECISION"
           } >> "$GITHUB_OUTPUT"
 
-          echo "=============================="
-          echo "GAUSS TAPIZ REPORT"
-          echo "Coverage : $COVERAGE"
-          echo "Speed    : $SPEED"
-          echo "GAUSS    : $GAUSS"
-          echo "UMBRAL   : $MIN_GAUSS"
-          echo "FIRMA    : $HASH"
-          echo "DECISION : $DECISION"
-          echo "=============================="
+          # ============================================================
+          # REPORTE FINAL
+          # ============================================================
+
+          echo
+          echo "========================================"
+          echo "         GAUSS TAPIZ REPORT"
+          echo "========================================"
+          echo "Coverage    : $COVERAGE"
+          echo "Speed       : $SPEED"
+          echo "Avg nanos   : $AVG_NANOS"
+          echo "Distance    : $DISTANCE"
+          echo "Angle       : $ANGLE_DEG deg"
+          echo "GAUSS       : $GAUSS"
+          echo "Delta       : $DELTA_GAUSS"
+          echo "Threshold   : $MIN_GAUSS"
+          echo "Firma       : $FIRMA"
+          echo "Decision    : $DECISION"
+          echo "========================================"
+
+          # ============================================================
+          # FALLO DEL JOB
+          # ============================================================
+
+          if [ "$DECISION" != "PASS" ]; then
+            echo "::error::GAUSS RESONANCE ($GAUSS) por debajo del umbral ($MIN_GAUSS)"
+            exit 1
+          fi
