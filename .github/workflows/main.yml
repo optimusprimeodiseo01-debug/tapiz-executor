@@ -9,11 +9,10 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  tapiz-ci:
-    name: Tapiz CI - Runner + Validacion
+  tapiz:
+    name: Tapiz
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -21,34 +20,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Preparar Python
+      - name: Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      - name: Verificar estructura
+      - name: Verificar runner
         run: |
           python -m py_compile runner.py
 
-      - name: Ejecutar Runner
+      - name: Ejecutar Tapiz
         run: |
           python runner.py
 
-      - name: Validar salida estructural
+      - name: Validar Tapiz
         run: |
           python runner.py > tapiz_output.txt
-
           grep -q "||K||" tapiz_output.txt
           grep -q "Lambda" tapiz_output.txt
           grep -q "Decision:" tapiz_output.txt
 
-          echo "=== VALIDACION TAPIZ ==="
-          cat tapiz_output.txt
-
       - name: Resultado
         run: |
           echo "================================"
-          echo " TAPIZ CI"
+          echo " TAPIZ"
           echo "================================"
           echo "Runner: OK"
           echo "K: OK"
